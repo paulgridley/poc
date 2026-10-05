@@ -1,0 +1,77 @@
+# Azure Repos PR validation is configured with a branch policy, not YAML pr triggers.
+trigger: none
+pr: none
+
+parameters:
+  - name: runAzureValidation
+    displayName: Run authenticated Azure validation and what-if
+    type: boolean
+    default: false
+  - name: workload
+    displayName: Approved workload
+    type: string
+    default: application-storage
+    values:
+      - shared-observability
+      - application-storage
+  - name: environment
+    displayName: Environment
+    type: string
+    default: dev
+    values:
+      - dev
+      - test
+      - prod
+  - name: owner
+    displayName: Owning team or contact
+    type: string
+    default: platform-team@example.com
+  - name: costCentre
+    displayName: Cost centre
+    type: string
+    default: PLATFORM
+  - name: serviceName
+    displayName: Service name
+    type: string
+    default: sampleapp
+  - name: retentionInDays
+    displayName: Shared observability retention days
+    type: number
+    default: 30
+    values: [30, 60, 90]
+  - name: storageSku
+    displayName: Application storage SKU
+    type: string
+    default: Standard_LRS
+    values:
+      - Standard_LRS
+      - Standard_GRS
+      - Standard_ZRS
+
+stages:
+  - stage: OfflineValidation
+    displayName: Offline PR-safe validation
+    jobs:
+      - job: OfflineValidation
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+          - template: templates/steps/offline-validation.yml
+            parameters:
+              artifactName: validation-results
+
+  - stage: AzureValidation
+    displayName: Authenticated Azure validation (manual only)
+    dependsOn: OfflineValidation
+    condition: and(succeeded(), eq('${{ parameters.runAzureValidation }}', 'true'))
+    jobs:
+      - template: templates/jobs/azure-validation.yml
+        parameters:
+          workload: ${{ parameters.workload }}
+          environment: ${{ parameters.environment }}
+          owner: ${{ parameters.owner }}
+          costCentre: ${{ parameters.costCentre }}
+          serviceName: ${{ parameters.serviceName }}
+          retentionInDays: ${{ parameters.retentionInDays }}
+          storageSku: ${{ parameters.storageSku }}

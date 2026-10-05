@@ -1,0 +1,27 @@
+parameters:
+  artifactName: validation-results
+
+steps:
+  - bash: |
+      set -uo pipefail
+      python3 scripts/validate_offline.py --output-dir "$(Pipeline.Workspace)/${{ parameters.artifactName }}"
+      validation_exit_code=$?
+      printf '%s' "$validation_exit_code" > "$(Pipeline.Workspace)/${{ parameters.artifactName }}/exit-code"
+      exit 0
+    displayName: Run offline catalogue and Bicep validation
+
+  - task: PublishPipelineArtifact@1
+    displayName: Publish offline validation results
+    condition: always()
+    inputs:
+      targetPath: $(Pipeline.Workspace)/${{ parameters.artifactName }}
+      artifact: ${{ parameters.artifactName }}
+
+  - bash: |
+      exit_code="$(cat "$(Pipeline.Workspace)/${{ parameters.artifactName }}/exit-code")"
+      if [ "$exit_code" -ne 0 ]; then
+        echo "Offline validation failed; inspect the validation-results artifact."
+        exit "$exit_code"
+      fi
+    displayName: Enforce offline validation result
+    condition: always()

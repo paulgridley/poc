@@ -1,0 +1,110 @@
+# Manual entry point only. Azure DevOps protected environments control deployment approval.
+trigger: none
+pr: none
+
+parameters:
+  - name: workload
+    displayName: Approved workload
+    type: string
+    default: application-storage
+    values:
+      - shared-observability
+      - application-storage
+  - name: environment
+    displayName: Environment
+    type: string
+    default: dev
+    values:
+      - dev
+      - test
+      - prod
+  - name: owner
+    displayName: Owning team or contact
+    type: string
+    default: platform-team@example.com
+  - name: costCentre
+    displayName: Cost centre
+    type: string
+    default: PLATFORM
+  - name: serviceName
+    displayName: Service name
+    type: string
+    default: sampleapp
+  - name: retentionInDays
+    displayName: Shared observability retention days
+    type: number
+    default: 30
+    values: [30, 60, 90]
+  - name: storageSku
+    displayName: Application storage SKU
+    type: string
+    default: Standard_LRS
+    values:
+      - Standard_LRS
+      - Standard_GRS
+      - Standard_ZRS
+
+stages:
+  - stage: OfflineValidation
+    displayName: Validate request offline
+    jobs:
+      - job: OfflineValidation
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+          - template: templates/steps/offline-validation.yml
+            parameters:
+              artifactName: self-service-offline-validation
+
+  - stage: AzureValidation
+    displayName: Validate and preview requested Azure change
+    dependsOn: OfflineValidation
+    condition: succeeded()
+    jobs:
+      - template: templates/jobs/azure-validation.yml
+        parameters:
+          workload: ${{ parameters.workload }}
+          environment: ${{ parameters.environment }}
+          owner: ${{ parameters.owner }}
+          costCentre: ${{ parameters.costCentre }}
+          serviceName: ${{ parameters.serviceName }}
+          retentionInDays: ${{ parameters.retentionInDays }}
+          storageSku: ${{ parameters.storageSku }}
+          artifactName: self-service-azure-validation
+
+  - ${{ if eq(parameters.environment, 'prod') }}:
+      - stage: DeployProduction
+        displayName: Deploy after production approval
+        dependsOn: AzureValidation
+        condition: succeeded()
+        lockBehavior: sequential
+        jobs:
+          - template: templates/jobs/deploy-workload.yml
+            parameters:
+              workload: ${{ parameters.workload }}
+              environment: ${{ parameters.environment }}
+              owner: ${{ parameters.owner }}
+              costCentre: ${{ parameters.costCentre }}
+              serviceName: ${{ parameters.serviceName }}
+              retentionInDays: ${{ parameters.retentionInDays }}
+              storageSku: ${{ parameters.storageSku }}
+              azureDevOpsEnvironment: azure-production
+
+  - ${{ if ne(parameters.environment, 'prod') }}:
+      - stage: DeployNonProduction
+        displayName: Deploy after non-production approval
+        dependsOn: AzureValidation
+        condition: succeeded()
+        lockBehavior: sequential
+        jobs:
+          - template: templates/jobs/deploy-workload.yml
+            parameters:
+              workload: ${{ parameters.workload }}
+              environment: ${{ parameters.environment }}
+              owner: ${{ parameters.owner }}
+              costCentre: ${{ parameters.costCentre }}
+              serviceName: ${{ parameters.serviceName }}
+              retentionInDays: ${{ parameters.retentionInDays }}
+              storageSku: ${{ parameters.storageSku }}
+              azureDevOpsEnvironment: azure-nonproduction
