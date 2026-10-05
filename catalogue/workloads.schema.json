@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/workload-catalogue.json",
+  "title": "Approved workload catalogue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "targets", "workloads"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "targets": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/target" }
+    },
+    "workloads": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/workload" }
+    }
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serviceConnection", "deploymentScope", "location", "azureDevOpsEnvironment", "ownershipBoundary"],
+      "properties": {
+        "serviceConnection": { "type": "string", "minLength": 1 },
+        "deploymentScope": { "enum": ["resourceGroup", "subscription", "managementGroup", "tenant"] },
+        "location": { "type": "string", "minLength": 1 },
+        "resourceGroup": { "type": "string", "minLength": 1 },
+        "managementGroupId": { "type": "string", "minLength": 1 },
+        "azureDevOpsEnvironment": { "type": "string", "minLength": 1 },
+        "ownershipBoundary": { "enum": ["shared-platform", "application"] }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "bicepParameter", "type"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+        "bicepParameter": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+        "type": { "enum": ["string", "integer", "boolean"] },
+        "minLength": { "type": "integer", "minimum": 0 },
+        "maxLength": { "type": "integer", "minimum": 1 },
+        "pattern": { "type": "string" },
+        "allowedValues": { "type": "array", "minItems": 1, "uniqueItems": true }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parameterFile", "target"],
+      "properties": {
+        "parameterFile": { "type": "string", "pattern": "^[^/].*\\.bicepparam$" },
+        "target": { "type": "string", "minLength": 1 }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "entryPoint", "deploymentScope", "ownership", "allowedRegions", "sizingOptions", "requiredInputs", "dependencies", "environments"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]+$" },
+        "description": { "type": "string", "minLength": 1 },
+        "entryPoint": { "type": "string", "pattern": "^[^/].*\\.bicep$" },
+        "deploymentScope": { "enum": ["resourceGroup", "subscription", "managementGroup", "tenant"] },
+        "ownership": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["boundary", "requiredTags"],
+          "properties": {
+            "boundary": { "enum": ["shared-platform", "application"] },
+            "requiredTags": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } }
+          }
+        },
+        "allowedRegions": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+        "sizingOptions": { "type": "object" },
+        "requiredInputs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/input" } },
+        "dependencies": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "environments": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/environment" } }
+      }
+    }
+  }
+}

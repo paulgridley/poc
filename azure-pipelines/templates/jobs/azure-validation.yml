@@ -1,0 +1,82 @@
+parameters:
+  workload: ''
+  environment: ''
+  owner: ''
+  costCentre: ''
+  serviceName: ''
+  retentionInDays: 30
+  storageSku: Standard_LRS
+  artifactName: azure-validation-results
+
+jobs:
+  - job: AzureValidation
+    displayName: Authenticated Azure validate and what-if (no deployment)
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+      - checkout: self
+      - template: ../steps/resolve-and-compile.yml
+        parameters:
+          workload: ${{ parameters.workload }}
+          environment: ${{ parameters.environment }}
+          owner: ${{ parameters.owner }}
+          costCentre: ${{ parameters.costCentre }}
+          serviceName: ${{ parameters.serviceName }}
+          retentionInDays: ${{ parameters.retentionInDays }}
+          storageSku: ${{ parameters.storageSku }}
+          outputDirectory: $(Pipeline.Workspace)/${{ parameters.artifactName }}
+
+      - task: AzureCLI@2
+        displayName: Validate at controlled Azure deployment scope
+        continueOnError: true
+        inputs:
+          azureSubscription: $(azureServiceConnection)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            set +e
+            python3 scripts/azure_operation.py \
+              --action validate \
+              --resolved "$(Pipeline.Workspace)/${{ parameters.artifactName }}/resolved-request.json" \
+              --template "$(Pipeline.Workspace)/${{ parameters.artifactName }}/template.json" \
+              --parameters "$(Pipeline.Workspace)/${{ parameters.artifactName }}/parameters.json" \
+              --output "$(Pipeline.Workspace)/${{ parameters.artifactName }}/validate.json"
+            result=$?
+            printf '%s' "$result" > "$(Pipeline.Workspace)/${{ parameters.artifactName }}/validate.exit-code"
+            exit 0
+
+      - task: AzureCLI@2
+        displayName: Run what-if at controlled Azure deployment scope
+        continueOnError: true
+        inputs:
+          azureSubscription: $(azureServiceConnection)
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            set +e
+            python3 scripts/azure_operation.py \
+              --action what-if \
+              --resolved "$(Pipeline.Workspace)/${{ parameters.artifactName }}/resolved-request.json" \
+              --template "$(Pipeline.Workspace)/${{ parameters.artifactName }}/template.json" \
+              --parameters "$(Pipeline.Workspace)/${{ parameters.artifactName }}/parameters.json" \
+              --output "$(Pipeline.Workspace)/${{ parameters.artifactName }}/what-if.json"
+            result=$?
+            printf '%s' "$result" > "$(Pipeline.Workspace)/${{ parameters.artifactName }}/what-if.exit-code"
+            exit 0
+
+      - task: PublishPipelineArtifact@1
+        displayName: Publish Azure validation and what-if results
+        condition: always()
+        inputs:
+          targetPath: $(Pipeline.Workspace)/${{ parameters.artifactName }}
+          artifact: ${{ parameters.artifactName }}
+
+      - bash: |
+          validate_exit_code="$(cat "$(Pipeline.Workspace)/${{ parameters.artifactName }}/validate.exit-code")"
+          what_if_exit_code="$(cat "$(Pipeline.Workspace)/${{ parameters.artifactName }}/what-if.exit-code")"
+          if [ "$validate_exit_code" -ne 0 ] || [ "$what_if_exit_code" -ne 0 ]; then
+            echo "Azure validation or what-if failed; inspect the published artifact."
+            exit 1
+          fi
+        displayName: Enforce Azure validation and what-if results
+        condition: always()

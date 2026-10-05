@@ -1,0 +1,58 @@
+parameters:
+  workload: ''
+  environment: ''
+  owner: ''
+  costCentre: ''
+  serviceName: ''
+  retentionInDays: 30
+  storageSku: Standard_LRS
+  outputDirectory: $(Pipeline.Workspace)/prepared
+  expectedAzureDevOpsEnvironment: ''
+
+steps:
+  - bash: |
+      set -euo pipefail
+      request_inputs=(
+        --input "owner=${REQUEST_OWNER}"
+        --input "costCentre=${REQUEST_COST_CENTRE}"
+        --input "serviceName=${REQUEST_SERVICE_NAME}"
+      )
+      case "${REQUEST_WORKLOAD}" in
+        shared-observability)
+          request_inputs+=(--input "retentionInDays=${REQUEST_RETENTION_DAYS}")
+          ;;
+        application-storage)
+          request_inputs+=(--input "storageSku=${REQUEST_STORAGE_SKU}")
+          ;;
+      esac
+
+      mkdir -p "${OUTPUT_DIRECTORY}"
+      python3 scripts/catalogue.py --repo-root . resolve \
+        --workload "${REQUEST_WORKLOAD}" \
+        --environment "${REQUEST_ENVIRONMENT}" \
+        --output "${OUTPUT_DIRECTORY}/resolved-request.json" \
+        --azure-devops \
+        "${request_inputs[@]}"
+
+      if [ -n "${EXPECTED_AZDO_ENVIRONMENT}" ] && [ "$(azureDevOpsEnvironment)" != "${EXPECTED_AZDO_ENVIRONMENT}" ]; then
+        echo "Resolved target environment does not match this protected deployment job."
+        exit 1
+      fi
+
+      az bicep build --file "$(entryPoint)" --outfile "${OUTPUT_DIRECTORY}/template.json"
+      az bicep build-params --file "$(parameterFile)" --outfile "${OUTPUT_DIRECTORY}/base.parameters.json"
+      python3 scripts/prepare_deployment.py \
+        --resolved "${OUTPUT_DIRECTORY}/resolved-request.json" \
+        --compiled-parameters "${OUTPUT_DIRECTORY}/base.parameters.json" \
+        --output "${OUTPUT_DIRECTORY}/parameters.json"
+    displayName: Resolve approved request and compile deployment files
+    env:
+      REQUEST_WORKLOAD: ${{ parameters.workload }}
+      REQUEST_ENVIRONMENT: ${{ parameters.environment }}
+      REQUEST_OWNER: ${{ parameters.owner }}
+      REQUEST_COST_CENTRE: ${{ parameters.costCentre }}
+      REQUEST_SERVICE_NAME: ${{ parameters.serviceName }}
+      REQUEST_RETENTION_DAYS: ${{ parameters.retentionInDays }}
+      REQUEST_STORAGE_SKU: ${{ parameters.storageSku }}
+      OUTPUT_DIRECTORY: ${{ parameters.outputDirectory }}
+      EXPECTED_AZDO_ENVIRONMENT: ${{ parameters.expectedAzureDevOpsEnvironment }}

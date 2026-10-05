@@ -1,0 +1,154 @@
+{
+  "$schema": "./workloads.schema.json",
+  "schemaVersion": 1,
+  "targets": {
+    "platform-nonprod": {
+      "serviceConnection": "sc-azure-platform-nonprod-wif",
+      "deploymentScope": "subscription",
+      "location": "uksouth",
+      "azureDevOpsEnvironment": "azure-nonproduction",
+      "ownershipBoundary": "shared-platform"
+    },
+    "platform-prod": {
+      "serviceConnection": "sc-azure-platform-prod-wif",
+      "deploymentScope": "subscription",
+      "location": "uksouth",
+      "azureDevOpsEnvironment": "azure-production",
+      "ownershipBoundary": "shared-platform"
+    },
+    "application-nonprod": {
+      "serviceConnection": "sc-azure-application-nonprod-wif",
+      "deploymentScope": "subscription",
+      "location": "uksouth",
+      "azureDevOpsEnvironment": "azure-nonproduction",
+      "ownershipBoundary": "application"
+    },
+    "application-prod": {
+      "serviceConnection": "sc-azure-application-prod-wif",
+      "deploymentScope": "subscription",
+      "location": "uksouth",
+      "azureDevOpsEnvironment": "azure-production",
+      "ownershipBoundary": "application"
+    }
+  },
+  "workloads": [
+    {
+      "id": "shared-observability",
+      "description": "Shared Log Analytics workspace owned and operated by the platform team.",
+      "entryPoint": "workloads/shared-observability/main.bicep",
+      "deploymentScope": "subscription",
+      "ownership": {
+        "boundary": "shared-platform",
+        "requiredTags": ["environment", "owner", "costCentre", "managedBy", "workload"]
+      },
+      "allowedRegions": ["uksouth", "ukwest", "westeurope"],
+      "sizingOptions": {
+        "retentionInDays": [30, 60, 90]
+      },
+      "requiredInputs": [
+        {
+          "name": "owner",
+          "bicepParameter": "owner",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._@-]+$"
+        },
+        {
+          "name": "costCentre",
+          "bicepParameter": "costCentre",
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        {
+          "name": "serviceName",
+          "bicepParameter": "serviceName",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 20,
+          "pattern": "^[a-z][a-z0-9-]+$"
+        },
+        {
+          "name": "retentionInDays",
+          "bicepParameter": "retentionInDays",
+          "type": "integer",
+          "allowedValues": [30, 60, 90]
+        }
+      ],
+      "dependencies": [],
+      "environments": {
+        "dev": {
+          "parameterFile": "workloads/shared-observability/parameters/dev.bicepparam",
+          "target": "platform-nonprod"
+        },
+        "prod": {
+          "parameterFile": "workloads/shared-observability/parameters/prod.bicepparam",
+          "target": "platform-prod"
+        }
+      }
+    },
+    {
+      "id": "application-storage",
+      "description": "Application-owned general-purpose v2 storage account with secure defaults.",
+      "entryPoint": "workloads/application-storage/main.bicep",
+      "deploymentScope": "subscription",
+      "ownership": {
+        "boundary": "application",
+        "requiredTags": ["environment", "owner", "costCentre", "managedBy", "workload"]
+      },
+      "allowedRegions": ["uksouth", "ukwest", "westeurope"],
+      "sizingOptions": {
+        "storageSku": ["Standard_LRS", "Standard_GRS", "Standard_ZRS"]
+      },
+      "requiredInputs": [
+        {
+          "name": "owner",
+          "bicepParameter": "owner",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._@-]+$"
+        },
+        {
+          "name": "costCentre",
+          "bicepParameter": "costCentre",
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        {
+          "name": "serviceName",
+          "bicepParameter": "serviceName",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 20,
+          "pattern": "^[a-z][a-z0-9-]+$"
+        },
+        {
+          "name": "storageSku",
+          "bicepParameter": "storageSku",
+          "type": "string",
+          "allowedValues": ["Standard_LRS", "Standard_GRS", "Standard_ZRS"]
+        }
+      ],
+      "dependencies": ["shared-observability"],
+      "environments": {
+        "dev": {
+          "parameterFile": "workloads/application-storage/parameters/dev.bicepparam",
+          "target": "application-nonprod"
+        },
+        "test": {
+          "parameterFile": "workloads/application-storage/parameters/test.bicepparam",
+          "target": "application-nonprod"
+        },
+        "prod": {
+          "parameterFile": "workloads/application-storage/parameters/prod.bicepparam",
+          "target": "application-prod"
+        }
+      }
+    }
+  ]
+}
